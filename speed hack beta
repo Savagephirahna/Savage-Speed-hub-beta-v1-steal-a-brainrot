@@ -1,0 +1,259 @@
+-- Savage Speed Hub | Executor Version (All-in-One)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- CONFIG
+local VALID_KEYS = {"FREE123","NEW","BETA-TEST"}
+local DEFAULT_SPEED = 16
+local CALIBRATE_SPEED = 135
+local AUTO_FORWARD_SCALE = 0.2
+local KEY_FILE = "SavageHubKey.txt" -- executor file to store key
+
+-- STATE
+local currentSpeed = DEFAULT_SPEED
+local isActive = false
+local connection
+local savedKey
+
+-- CHARACTER
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- UTILS
+local function notify(msg, color)
+    local gui = Instance.new("ScreenGui", playerGui)
+    gui.ResetOnSpawn = false
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0,300,0,50)
+    frame.Position = UDim2.new(0.5,-150,0.05,0)
+    frame.BackgroundColor3 = color or Color3.fromRGB(50,50,60)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
+    local label = Instance.new("TextLabel", frame)
+    label.Size = UDim2.new(1,0,1,0)
+    label.Text = msg
+    label.TextScaled = true
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color3.new(1,1,1)
+    label.BackgroundTransparency = 1
+    task.delay(2,function() gui:Destroy() end)
+end
+
+-- SAVE & LOAD KEY (executor persistent)
+local function saveKey(key)
+    if writefile then
+        pcall(function()
+            writefile(KEY_FILE, key)
+        end)
+    end
+    savedKey = key
+end
+
+local function loadKey()
+    if isfile and isfile(KEY_FILE) then
+        local key = readfile(KEY_FILE)
+        savedKey = key
+        return key
+    end
+end
+
+-- AUTO-FORWARD
+local function updateSpeed()
+    if humanoid and rootPart then
+        humanoid.WalkSpeed = currentSpeed
+        if isActive then
+            local forward = rootPart.CFrame.LookVector
+            rootPart.Velocity = Vector3.new(forward.X * currentSpeed * AUTO_FORWARD_SCALE,
+                                            rootPart.Velocity.Y,
+                                            forward.Z * currentSpeed * AUTO_FORWARD_SCALE)
+        end
+    end
+end
+
+-- GUI
+local function createGUI()
+    local gui = Instance.new("ScreenGui", playerGui)
+    gui.ResetOnSpawn = false
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0,200,0,180)
+    frame.Position = UDim2.new(0.7,0,0.3,0)
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,40)
+    frame.Active = true
+    frame.Draggable = true
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
+
+    -- Title
+    local titleLabel = Instance.new("TextLabel", frame)
+    titleLabel.Size = UDim2.new(1,0,0,40)
+    titleLabel.Position = UDim2.new(0,0,0,0)
+    titleLabel.Text = "⚡ Savage Speed Hub Beta ⚡"
+    titleLabel.TextScaled = true
+    titleLabel.Font = Enum.Font.GothamBlack
+    titleLabel.TextColor3 = Color3.fromRGB(255,255,0)
+    titleLabel.BackgroundTransparency = 1
+
+    -- ON/OFF Button
+    local toggleBtn = Instance.new("TextButton", frame)
+    toggleBtn.Size = UDim2.new(0,120,0,50)
+    toggleBtn.Position = UDim2.new(0.5,-60,0,50)
+    toggleBtn.Text = "OFF"
+    toggleBtn.TextScaled = true
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(40,40,60)
+    toggleBtn.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0,12)
+
+    -- CALIBRATE Button
+    local calibrateBtn = Instance.new("TextButton", frame)
+    calibrateBtn.Size = UDim2.new(0,150,0,50)
+    calibrateBtn.Position = UDim2.new(0.5,-75,0,110)
+    calibrateBtn.Text = "CALIBRATE"
+    calibrateBtn.TextScaled = true
+    calibrateBtn.Font = Enum.Font.GothamBold
+    calibrateBtn.BackgroundColor3 = Color3.fromRGB(120,90,255)
+    calibrateBtn.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", calibrateBtn).CornerRadius = UDim.new(0,14)
+
+    -- Lightning toggle button to hide/show GUI
+    local lightningBtn = Instance.new("TextButton", playerGui)
+    lightningBtn.Size = UDim2.new(0,50,0,50)
+    lightningBtn.Position = UDim2.new(0.9,0,0.1,0)
+    lightningBtn.Text = "⚡"
+    lightningBtn.Font = Enum.Font.GothamBold
+    lightningBtn.TextScaled = true
+    lightningBtn.BackgroundColor3 = Color3.fromRGB(255,200,0)
+    Instance.new("UICorner", lightningBtn).CornerRadius = UDim.new(0,12)
+    local guiVisible = true
+    lightningBtn.MouseButton1Click:Connect(function()
+        guiVisible = not guiVisible
+        frame.Visible = guiVisible
+    end)
+
+    -- CALIBRATE LOGIC
+    local function calibrateSpeed()
+        calibrateBtn.Active = false
+        local countdown = 3
+        local function step()
+            if countdown > 0 then
+                calibrateBtn.Text = "Calibrating in "..countdown
+                countdown -= 1
+                task.wait(1)
+                step()
+            else
+                currentSpeed = CALIBRATE_SPEED
+                humanoid.WalkSpeed = currentSpeed
+                calibrateBtn.Text = "CALIBRATED"
+                notify("✅ Calibrated to max safe speed!", Color3.fromRGB(0,180,120))
+                task.delay(1,function()
+                    calibrateBtn.Text = "CALIBRATE"
+                    calibrateBtn.Active = true
+                end)
+            end
+        end
+        step()
+    end
+    calibrateBtn.MouseButton1Click:Connect(calibrateSpeed)
+
+    -- ON/OFF LOGIC
+    toggleBtn.MouseButton1Click:Connect(function()
+        isActive = not isActive
+        if isActive then
+            toggleBtn.Text = "ON"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(0,180,120)
+            if connection then connection:Disconnect() end
+            connection = RunService.Heartbeat:Connect(updateSpeed)
+            notify("⚡ Speed ON", Color3.fromRGB(0,180,120))
+        else
+            toggleBtn.Text = "OFF"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(40,40,60)
+            if connection then connection:Disconnect() connection=nil end
+            humanoid.WalkSpeed = DEFAULT_SPEED
+            rootPart.Velocity = Vector3.new(0, rootPart.Velocity.Y,0)
+            notify("⚡ Speed OFF", Color3.fromRGB(255,50,50))
+        end
+    end)
+end
+
+-- KEY GUI
+local function requestKey()
+    if loadKey() then
+        createGUI()
+        notify("✅ Key remembered! Hub loaded.", Color3.fromRGB(0,180,120))
+        return
+    end
+
+    local gui = Instance.new("ScreenGui", playerGui)
+    gui.ResetOnSpawn = false
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0,300,0,120)
+    frame.Position = UDim2.new(0.5,-150,0.4,0)
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,40)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
+
+    local prompt = Instance.new("TextLabel", frame)
+    prompt.Size = UDim2.new(1,0,0,40)
+    prompt.Position = UDim2.new(0,0,0,10)
+    prompt.Text = "Enter Key:"
+    prompt.TextScaled = true
+    prompt.Font = Enum.Font.GothamBold
+    prompt.TextColor3 = Color3.new(1,1,1)
+    prompt.BackgroundTransparency = 1
+
+    local textBox = Instance.new("TextBox", frame)
+    textBox.Size = UDim2.new(0.8,0,0,40)
+    textBox.Position = UDim2.new(0.1,0,0,55)
+    textBox.PlaceholderText = "Key Here"
+    textBox.TextScaled = true
+    textBox.Font = Enum.Font.Gotham
+    textBox.TextColor3 = Color3.new(1,1,1)
+    textBox.BackgroundColor3 = Color3.fromRGB(50,50,60)
+    Instance.new("UICorner", textBox).CornerRadius = UDim.new(0,12)
+
+    local submitBtn = Instance.new("TextButton", frame)
+    submitBtn.Size = UDim2.new(0.5,0,0,30)
+    submitBtn.Position = UDim2.new(0.25,0,0,90)
+    submitBtn.Text = "Submit"
+    submitBtn.TextScaled = true
+    submitBtn.Font = Enum.Font.GothamBold
+    submitBtn.BackgroundColor3 = Color3.fromRGB(0,180,120)
+    submitBtn.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", submitBtn).CornerRadius = UDim.new(0,12)
+
+    submitBtn.MouseButton1Click:Connect(function()
+        local inputKey = textBox.Text:upper()
+        local valid = false
+        for _, key in ipairs(VALID_KEYS) do
+            if inputKey == key:upper() then valid = true break end
+        end
+        if valid then
+            saveKey(inputKey)
+            notify("✅ Key Accepted! Hub Loaded.", Color3.fromRGB(0,180,120))
+            gui:Destroy()
+            createGUI()
+        else
+            prompt.Text = "❌ Wrong Key!"
+            textBox.Text = ""
+            notify("❌ Invalid Key!", Color3.fromRGB(255,50,50))
+        end
+    end)
+end
+
+-- RESPAWN HANDLING
+player.CharacterAdded:Connect(function(char)
+    character = char
+    humanoid = char:WaitForChild("Humanoid")
+    rootPart = char:WaitForChild("HumanoidRootPart")
+    task.wait(0.4)
+    if isActive then
+        if connection then connection:Disconnect() end
+        connection = RunService.Heartbeat:Connect(updateSpeed)
+    end
+end)
+
+-- START
+requestKey()
+print("🔑 Savage Speed Hub | Executor Ready")
